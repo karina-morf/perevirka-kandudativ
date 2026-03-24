@@ -89,10 +89,22 @@
   let currentToken = "";
   let modalTargetWord = "";
   let activeDiv = null;
-  let savedCandidateName = ""; // Зберігаємо ім'я для відправки результатів
+  let savedCandidateName = ""; 
 
   window.onload = async () => {
     const params = new URLSearchParams(window.location.search);
+    
+    // --- ПОКРАЩЕННЯ: Обробка Enter у модальному вікні ---
+    const modalInput = document.getElementById("modalInput");
+    modalInput.addEventListener("keydown", function(event) {
+        // Якщо натиснуто Enter (код 13 або event.key === 'Enter')
+        if (event.key === "Enter") {
+            event.preventDefault(); // Запобігаємо небажаним діям браузера
+            saveCorrection(); // Викликаємо функцію збереження
+        }
+    });
+    // ---------------------------------------------------
+
     if (params.has('token')) {
         document.getElementById("loginScreen").classList.add("hidden");
         
@@ -103,19 +115,17 @@
         loadingMsg.innerText = "⏳ Завантаження тесту...";
         document.querySelector(".wrap").appendChild(loadingMsg);
 
-        // Відправляємо токен на перевірку і ОДНОЧАСНО отримуємо налаштування для нього
         const payload = { action: 'checkToken', token: params.get('token') };
         const form = new URLSearchParams();
         form.append('payload', JSON.stringify(payload));
         
         try {
             const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
-            const res = await resp.json(); // Тепер сервер повертає об'єкт JSON
+            const res = await resp.json(); 
             
             document.getElementById("loadingMessage").remove();
             
             if (res.status === "Valid") {
-                // Якщо токен живий, запускаємо тест з отриманими даними
                 initCandidateTest(params.get('token'), res.name, res.time, res.words);
             } else {
                 document.querySelector(".wrap").innerHTML = "<h2 style='text-align:center; margin-top:50px; color: #ff6b6b;'>❌ Це посилання вже використано або воно недійсне.</h2>";
@@ -149,7 +159,7 @@
           alert("Невірний пароль!");
       }
     } catch (e) {
-      alert("Помилка зв'язку з БД. Перевір чи зроблено Deploy (New version)!");
+      alert("Помилка зв'язку з БД.");
       console.error(e);
     }
     btn.disabled = false;
@@ -157,7 +167,9 @@
   }
 
   async function updateGlobalWords() {
-    const newWords = document.getElementById("wordBase").value;
+    const newWords = document.getElementById("wordBase").value.trim();
+    if(!newWords) return alert("Не можна зберегти порожній список слів!");
+
     const payload = { action: 'updateWords', password: currentAdminPass, newWords: newWords };
     const form = new URLSearchParams();
     form.append('payload', JSON.stringify(payload));
@@ -175,15 +187,15 @@
   async function generateCandidateLink() {
     const name = document.getElementById("candName").value.trim();
     const mins = document.getElementById("testMinutes").value;
-    const words = document.getElementById("wordBase").value;
+    const words = document.getElementById("wordBase").value.trim();
 
     if(!name) return alert("Будь ласка, введіть ім'я кандидата!");
+    if(!words) return alert("❌ Помилка: База слів порожня! Додай слова перед генерацією посилання.");
 
     const btn = event.target;
     btn.disabled = true;
     btn.innerText = "Генерація...";
 
-    // Відправляємо ВСІ дані в БД для збереження
     const payload = { 
         action: 'generateToken', 
         password: currentAdminPass, 
@@ -198,7 +210,6 @@
       const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
       const token = await resp.text();
 
-      // ГЕНЕРУЄМО КОРОТКЕ ПОСИЛАННЯ (тільки токен)
       const link = `${window.location.origin}${window.location.pathname}?token=${token}`;
       
       navigator.clipboard.writeText(link);
@@ -214,22 +225,27 @@
     document.getElementById("testScreen").classList.remove("hidden");
     
     currentToken = token;
-    savedCandidateName = name; // Зберігаємо для фінальної відправки
+    savedCandidateName = name; 
     timeLeft = parseInt(timeMins) * 60;
     document.getElementById("candDisplayName").innerText = name;
     
-    // Парсимо слова, які прийшли з бази даних
-    const wordsArray = wordsString.split(',').map(w => w.trim()).filter(w => w);
+    const safeWords = wordsString ? String(wordsString) : "";
+    const wordsArray = safeWords.split(',').map(w => w.trim()).filter(w => w);
 
     const grid = document.getElementById("grid");
     grid.innerHTML = "";
-    wordsArray.forEach(w => {
-        const div = document.createElement("div");
-        div.className = "brick";
-        div.textContent = w;
-        div.onclick = () => openModal(w, div);
-        grid.appendChild(div);
-    });
+    
+    if (wordsArray.length === 0) {
+        grid.innerHTML = "<h3 style='color:#ff6b6b; grid-column: 1/-1; text-align:center;'>Сталася помилка: слова для цього тесту не знайдено.</h3>";
+    } else {
+        wordsArray.forEach(w => {
+            const div = document.createElement("div");
+            div.className = "brick";
+            div.textContent = w;
+            div.onclick = () => openModal(w, div);
+            grid.appendChild(div);
+        });
+    }
 
     startTimer();
   }
@@ -285,7 +301,7 @@
         action: 'submitTest', 
         token: currentToken, 
         correctedJoined: results || "Без виправлень",
-        candidateName: savedCandidateName // Беремо ім'я, яке надіслала БД
+        candidateName: savedCandidateName 
     };
 
     const form = new URLSearchParams();
