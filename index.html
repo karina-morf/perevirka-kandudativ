@@ -56,6 +56,15 @@
     <div id="linkOutput" style="margin-top:15px; font-size:14px; color:var(--brick); word-break: break-all; text-align:center;"></div>
   </div>
 
+  <div id="candidateStartScreen" class="card hidden" style="text-align:center;">
+    <h1>Вітаємо, <span id="welcomeName" style="color:var(--brick)"></span>!</h1>
+    <p style="font-size:15px; margin-bottom:24px; line-height:1.5;">
+      Вам потрібно знайти та виправити слова з помилками.<br>
+      У вас буде <b id="welcomeTime" style="color:var(--brick)"></b> хвилин на виконання завдання.
+    </p>
+    <button class="btn" onclick="startCandidateTest()" style="font-size: 18px; padding: 16px;">Почати тест 🚀</button>
+  </div>
+
   <div id="testScreen" class="hidden">
     <div class="bar">
         <div id="timer" class="timer">--:--</div>
@@ -79,7 +88,6 @@
 </div>
 
 <script>
-  // Твоє посилання на БД
   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWlrX2TV81oMnNj7VmD3qOgaty9EuOTgWpvlijzE5crhFOiIQqbpC4h8osEc30DQBY6w/exec"; 
 
   let currentAdminPass = "";
@@ -90,20 +98,19 @@
   let modalTargetWord = "";
   let activeDiv = null;
   let savedCandidateName = ""; 
+  let pendingTestConfig = null; // Зберігаємо дані тесту до натискання "Почати"
 
   window.onload = async () => {
     const params = new URLSearchParams(window.location.search);
     
-    // --- ПОКРАЩЕННЯ: Обробка Enter у модальному вікні ---
+    // Обробка Enter у модальному вікні
     const modalInput = document.getElementById("modalInput");
     modalInput.addEventListener("keydown", function(event) {
-        // Якщо натиснуто Enter (код 13 або event.key === 'Enter')
         if (event.key === "Enter") {
-            event.preventDefault(); // Запобігаємо небажаним діям браузера
-            saveCorrection(); // Викликаємо функцію збереження
+            event.preventDefault(); 
+            saveCorrection(); 
         }
     });
-    // ---------------------------------------------------
 
     if (params.has('token')) {
         document.getElementById("loginScreen").classList.add("hidden");
@@ -126,7 +133,18 @@
             document.getElementById("loadingMessage").remove();
             
             if (res.status === "Valid") {
-                initCandidateTest(params.get('token'), res.name, res.time, res.words);
+                // Замість прямого запуску тесту, зберігаємо дані і показуємо кнопку "Почати"
+                pendingTestConfig = {
+                    token: params.get('token'),
+                    name: res.name,
+                    time: res.time,
+                    words: res.words
+                };
+                
+                document.getElementById("welcomeName").innerText = res.name;
+                document.getElementById("welcomeTime").innerText = res.time;
+                document.getElementById("candidateStartScreen").classList.remove("hidden");
+                
             } else {
                 document.querySelector(".wrap").innerHTML = "<h2 style='text-align:center; margin-top:50px; color: #ff6b6b;'>❌ Це посилання вже використано або воно недійсне.</h2>";
             }
@@ -135,6 +153,17 @@
         }
     }
   };
+
+  // ФУНКЦІЯ ДЛЯ ЗАПУСКУ ТЕСТУ ПІСЛЯ НАТИСКАННЯ "ПОЧАТИ"
+  function startCandidateTest() {
+    document.getElementById("candidateStartScreen").classList.add("hidden");
+    initCandidateTest(
+        pendingTestConfig.token, 
+        pendingTestConfig.name, 
+        pendingTestConfig.time, 
+        pendingTestConfig.words
+    );
+  }
 
   async function checkAdminPass() {
     const btn = event.target;
@@ -251,6 +280,11 @@
   }
 
   function startTimer() {
+    // Одразу показуємо стартовий час
+    const m = String(Math.floor(timeLeft/60)).padStart(2,"0");
+    const s = String(timeLeft%60).padStart(2,"0");
+    document.getElementById("timer").textContent = `${m}:${s}`;
+    
     timerId = setInterval(() => {
         timeLeft--;
         const m = String(Math.floor(timeLeft/60)).padStart(2,"0");
