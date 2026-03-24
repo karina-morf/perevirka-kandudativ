@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <title>Система перевірки кандидатів</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <style>
+    :root{
+      --bg:#2b2040; --brick:#c9b3ec; --brick-hover:#b79fe3; --brick-selected:#f7a0d0;
+      --text:#fff; --accent:#9b59b6; --max-width:1100px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;padding:env(safe-area-inset-top,24px) 16px 24px; background:var(--bg); color:var(--text); font-family:Inter,Arial,Helvetica,sans-serif; display:flex; justify-content:center}
+    .wrap{width:100%; max-width:var(--max-width)}
+    .hidden { display: none !important; }
+
+    .card{background:#3a2a59; padding:24px; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.3); max-width:500px; margin: 40px auto 0;}
+    h1{margin:0 0 16px; font-size:clamp(18px,2.2vw,26px); text-align:center;}
+    label {font-size: 14px; opacity: 0.9; margin-top: 10px; display: block;}
+    .inputBox, textarea {width:100%; padding:12px; margin:8px 0 16px; border-radius:8px; border:none; font-size:16px; font-family: inherit;}
+    .btn{width:100%; padding:14px; border-radius:10px; border:0; background:var(--accent); color:#fff; cursor:pointer; font-weight:700; transition: 0.2s; font-size:15px;}
+    .btn:hover{opacity:0.9; transform: scale(1.02)}
+
+    .bar{display:flex;gap:12px;align-items:center;margin-bottom:12px; position:sticky; top:env(safe-area-inset-top,12px); z-index:5; background:linear-gradient(180deg, rgba(43,32,64,0.95), rgba(43,32,64,0.85)); padding:8px; border-radius:12px}
+    .timer{font-weight:800;padding:8px 12px;border-radius:10px;background:#3a2a59;min-width:76px;text-align:center;font-size:16px}
+    .cand-name{font-weight:bold; font-size:16px;}
+    .sendBtn{margin-left:auto; width: auto; padding: 10px 16px;}
+
+    .grid{display:grid; gap:10px; align-items:start; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));}
+    .brick{background:var(--brick); color:#2b2040; border-radius:12px; padding:14px 12px; box-shadow:2px 2px 6px rgba(0,0,0,.25); cursor:pointer; transition:transform .12s, background .12s; display:flex; align-items:center; justify-content:center; text-align:center; min-height:56px; font-weight:700; font-size:clamp(14px,1.8vw,16px);}
+    .brick:active{transform:translateY(1px)}
+    .brick:hover{background:var(--brick-hover)}
+    .brick.selected{background:var(--brick-selected)}
+
+    .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+    .modalContent{background:#fff;color:#000;padding:20px;border-radius:12px;width:100%;max-width:400px}
+    .modalContent h3{margin:0 0 12px;font-size:18px}
+    .modalContent input{width:100%;padding:12px;border-radius:8px;border:1px solid #ccc;font-size:16px;margin-bottom:12px;}
+    .modalActions{display:flex;gap:10px;justify-content:center;}
+    .modalActions button{flex:1;padding:12px;border-radius:8px;border:0;cursor:pointer;font-weight:bold;}
+
+    @media (max-width:480px){
+      body{padding:env(safe-area-inset-top,12px) 12px 20px}
+      .grid{grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:8px}
+      .brick{min-height:64px; padding:16px; font-size:16px}
+      .bar{padding:10px}
+      .modalContent{height:100%;max-width:100%;border-radius:12px 12px 0 0;align-self:flex-end}
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div id="loginScreen" class="card">
+    <h1>Вхід для рекрутера</h1>
+    <input type="password" id="adminPassInput" class="inputBox" placeholder="Введіть пароль...">
+    <button class="btn" onclick="checkAdminPass()">Увійти</button>
+  </div>
+
+  <div id="adminPanel" class="card hidden">
+    <h1>Генерація тесту</h1>
+    <label>Ім'я кандидата:</label>
+    <input type="text" id="candName" class="inputBox" placeholder="Наприклад: Іванов Іван">
+    <label>Час тесту (у хвилинах):</label>
+    <input type="number" id="testMinutes" class="inputBox" value="5" min="1">
+    <label>База слів (через кому):</label>
+    <textarea id="wordBase" rows="4"></textarea>
+    <button class="btn" style="background:#5c4482; margin-bottom:16px;" onclick="updateGlobalWords()">💾 Зберегти ці слова як основні в БД</button>
+    <button class="btn" onclick="generateCandidateLink()">🔗 Створити та скопіювати посилання</button>
+    <div id="linkOutput" style="margin-top:15px; font-size:13px; color:var(--brick); word-break: break-all; text-align:center;"></div>
+  </div>
+
+  <div id="testScreen" class="hidden">
+    <div class="bar">
+        <div id="timer" class="timer">--:--</div>
+        <div id="candDisplayName" class="cand-name"></div>
+        <button class="btn sendBtn" id="sendBtn" onclick="submitResults()">Надіслати</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modalContent">
+    <h3 id="modalTitle">Виправити слово</h3>
+    <input id="modalInput" type="text" placeholder="Правильний варіант...">
+    <div class="modalActions">
+      <button onclick="saveCorrection()" style="background:var(--accent);color:#fff">Зберегти</button>
+      <button onclick="closeModal()" style="background:#ddd;color:#000">Скасувати</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWlrX2TV81oMnNj7VmD3qOgaty9EuOTgWpvlijzE5crhFOiIQqbpC4h8osEc30DQBY6w/exec"; 
+
+  let currentAdminPass = "";
+  let edited = new Map();
+  let timeLeft = 0;
+  let timerId = null;
+  let currentToken = "";
+  let modalTargetWord = "";
+  let activeDiv = null;
+
+  window.onload = async () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('token')) {
+        // Ховаємо форму входу для рекрутера
+        document.getElementById("loginScreen").classList.add("hidden");
+        
+        // Показуємо повідомлення про завантаження
+        const loadingMsg = document.createElement("h2");
+        loadingMsg.id = "loadingMessage";
+        loadingMsg.style.textAlign = "center";
+        loadingMsg.style.marginTop = "50px";
+        loadingMsg.innerText = "⏳ Перевірка посилання...";
+        document.querySelector(".wrap").appendChild(loadingMsg);
+
+        // Запитуємо БД про статус токена
+        const payload = { action: 'checkToken', token: params.get('token') };
+        const form = new URLSearchParams();
+        form.append('payload', JSON.stringify(payload));
+        
+        try {
+            const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
+            const res = await resp.text();
+            
+            document.getElementById("loadingMessage").remove();
+            
+            if (res === "Valid") {
+                initCandidateTest(params);
+            } else {
+                document.querySelector(".wrap").innerHTML = "<h2 style='text-align:center; margin-top:50px; color: #ff6b6b;'>❌ Це посилання вже використано або воно недійсне.</h2>";
+            }
+        } catch (e) {
+            document.getElementById("loadingMessage").innerText = "Помилка зв'язку з сервером.";
+        }
+    }
+  };
+
+  async function checkAdminPass() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerText = "Перевірка...";
+    const inputPass = document.getElementById("adminPassInput").value;
+    
+    try {
+      const payload = { action: 'getSettings' };
+      const form = new URLSearchParams();
+      form.append('payload', JSON.stringify(payload));
+      
+      const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
+      const settings = await resp.json();
+
+      if(inputPass === settings.pass) {
+          currentAdminPass = settings.pass;
+          document.getElementById("wordBase").value = settings.words; 
+          document.getElementById("loginScreen").classList.add("hidden");
+          document.getElementById("adminPanel").classList.remove("hidden");
+      } else {
+          alert("Невірний пароль!");
+      }
+    } catch (e) {
+      alert("Помилка зв'язку з БД.");
+      console.error(e);
+    }
+    btn.disabled = false;
+    btn.innerText = "Увійти";
+  }
+
+  async function updateGlobalWords() {
+    const newWords = document.getElementById("wordBase").value;
+    const payload = { action: 'updateWords', password: currentAdminPass, newWords: newWords };
+    const form = new URLSearchParams();
+    form.append('payload', JSON.stringify(payload));
+
+    try {
+      const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
+      const res = await resp.text();
+      if(res === "Success") alert("Базу слів успішно оновлено в Google Таблиці!");
+      else alert("Помилка при оновленні: " + res);
+    } catch(e) {
+      alert("Помилка мережі.");
+    }
+  }
+
+  async function generateCandidateLink() {
+    const name = document.getElementById("candName").value.trim();
+    const mins = document.getElementById("testMinutes").value;
+    const words = document.getElementById("wordBase").value;
+
+    if(!name) return alert("Будь ласка, введіть ім'я кандидата!");
+
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerText = "Генерація...";
+
+    const payload = { action: 'generateToken', password: currentAdminPass, candidateName: name };
+    const form = new URLSearchParams();
+    form.append('payload', JSON.stringify(payload));
+
+    try {
+      const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
+      const token = await resp.text();
+
+      const link = `${window.location.origin}${window.location.pathname}?token=${token}&time=${mins}&words=${encodeURIComponent(words)}&name=${encodeURIComponent(name)}`;
+      
+      navigator.clipboard.writeText(link);
+      document.getElementById("linkOutput").innerHTML = `Посилання успішно скопійовано!<br><br><a href="${link}" target="_blank" style="color:var(--brick)">Перевірити посилання</a>`;
+    } catch(e) {
+      alert("Помилка генерації посилання.");
+    }
+    btn.disabled = false;
+    btn.innerText = "🔗 Створити та скопіювати посилання";
+  }
+
+  function initCandidateTest(params) {
+    document.getElementById("testScreen").classList.remove("hidden");
+    
+    currentToken = params.get('token');
+    timeLeft = parseInt(params.get('time')) * 60;
+    document.getElementById("candDisplayName").innerText = params.get('name');
+    
+    const rawWords = params.get('words') || "";
+    const wordsArray = rawWords.split(',').map(w => w.trim()).filter(w => w);
+
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+    wordsArray.forEach(w => {
+        const div = document.createElement("div");
+        div.className = "brick";
+        div.textContent = w;
+        div.onclick = () => openModal(w, div);
+        grid.appendChild(div);
+    });
+
+    startTimer();
+  }
+
+  function startTimer() {
+    timerId = setInterval(() => {
+        timeLeft--;
+        const m = String(Math.floor(timeLeft/60)).padStart(2,"0");
+        const s = String(timeLeft%60).padStart(2,"0");
+        document.getElementById("timer").textContent = `${m}:${s}`;
+        if(timeLeft <= 0) {
+            clearInterval(timerId);
+            submitResults(true);
+        }
+    }, 1000);
+  }
+
+  function openModal(word, el) {
+    modalTargetWord = word;
+    activeDiv = el;
+    document.getElementById("modalTitle").textContent = `Виправити: ${word}`;
+    document.getElementById("modalInput").value = edited.get(word) || "";
+    document.getElementById("modal").classList.remove("hidden");
+    document.getElementById("modalInput").focus();
+  }
+
+  function closeModal() { 
+    document.getElementById("modal").classList.add("hidden"); 
+    modalTargetWord = "";
+  }
+
+  function saveCorrection() {
+    const val = document.getElementById("modalInput").value.trim();
+    if(val) {
+        edited.set(modalTargetWord, val);
+        activeDiv.classList.add("selected");
+    } else {
+        edited.delete(modalTargetWord);
+        activeDiv.classList.remove("selected");
+    }
+    closeModal();
+  }
+
+  async function submitResults(isAuto = false) {
+    if(!isAuto && !confirm("Ви впевнені, що хочете завершити тест?")) return;
+    
+    clearInterval(timerId);
+    document.getElementById("sendBtn").disabled = true;
+    document.getElementById("sendBtn").innerText = "Надсилання...";
+
+    const results = Array.from(edited.entries()).map(([orig, corr]) => `${orig}→${corr}`).join(", ");
+    const payload = { 
+        action: 'submitTest', 
+        token: currentToken, 
+        correctedJoined: results || "Без виправлень",
+        candidateName: new URLSearchParams(window.location.search).get('name')
+    };
+
+    const form = new URLSearchParams();
+    form.append('payload', JSON.stringify(payload));
+
+    try {
+        const resp = await fetch(SCRIPT_URL, { method: 'POST', body: form });
+        const res = await resp.text();
+        if(res === "Success") {
+            alert("Тест завершено! Дякуємо, результати збережено.");
+            document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px'>Тест завершено. Можете закрити вкладку.</h2>";
+        } else {
+            alert("Помилка (можливо, посилання вже використане): " + res);
+        }
+    } catch (e) {
+        alert("Помилка мережі при надсиланні.");
+        document.getElementById("sendBtn").disabled = false;
+        document.getElementById("sendBtn").innerText = "Надіслати";
+    }
+  }
+</script>
+</body>
+</html>
